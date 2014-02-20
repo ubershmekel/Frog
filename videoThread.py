@@ -43,7 +43,7 @@ except AttributeError:
 FROG_SCRUB_DURATION = getattr(settings, 'FROG_SCRUB_DURATION', 60)
 FROG_FFMPEG_ARGS = getattr(settings, 'FROG_FFMPEG_ARGS', '-vcodec libx264 -b:v 2500k -acodec libvo_aacenc -b:a 56k -ac 2 -y')
 FROG_SCRUB_FFMPEG_ARGS = getattr(settings, 'FROG_SCRUB_FFMPEG_ARGS', '-vcodec libx264 -b:v 2500k -x264opts keyint=1:min-keyint=8 -acodec libvo_aacenc -b:a 56k -ac 2 -y')
-
+FROG_FFMPEG_FORMAT_ARGS = getattr(settings, 'FROG_FFMPEG_FORMAT_ARGS', '-vcodec libx264 -b:v 2500k -maxrate 2500k -bufsize 2500k -pix_fmt yuv420p -acodec libvo_aacenc -b:a 128k -ac 2 -y')
 
 class VideoThread(Thread):
     def __init__(self, queue, *args, **kwargs):
@@ -74,22 +74,37 @@ class VideoThread(Thread):
                     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
                     infoString = proc.stdout.readlines()
                     videodata = parseInfo(infoString)
-                    isH264 = videodata['video'][0]['codec'].lower().find('h264') != -1 and sourcepath.ext == '.mp4'
-                    m, s = divmod(FROG_SCRUB_DURATION, 60)
-                    h, m = divmod(m, 60)
-                    scrubstr = "%02d:%02d:%02d" % (h, m, s)
-                    scrub = videodata['duration'] <= scrubstr
+                    
+                    logger.info('video data gathered:')
+                    for vd in videodata:
+                        logger.info('%s : %s' % (vd,videodata[vd]))
+                    
+                    #isH264 = videodata['video'][0]['codec'].lower().find('h264') != -1 and sourcepath.ext == '.mp4'
+                    #m, s = divmod(FROG_SCRUB_DURATION, 60)
+                    #h, m = divmod(m, 60)
+                    #scrubstr = "%02d:%02d:%02d" % (h, m, s)
+                    #scrub = videodata['duration'] <= scrubstr
+
+                    cur_pix_fmt = videodata['video'][0]['pixel_format']
+                    frogArgs = FROG_FFMPEG_ARGS
+                    #if scrub:
+                    #    frogArgs = FROG_SCRUB_FFMPEG_ARGS
+                    if cur_pix_fmt in ["bgr24","yuv444p"] or len(cur_pix_fmt.split("(")) > 1:
+                        frogArgs = FROG_FFMPEG_FORMAT_ARGS
 
                     outfile = sourcepath.parent / ("_%s.mp4" % item.hash)
 
                     ## -- Further processing is needed if not h264 or needs to be scrubbable
-                    if not isH264 or scrub:
+                    #if not isH264 or scrub:
+                    
+                    # nah, lets just process everything
+                    if True:
                         item.queue.setMessage('Converting to MP4...')
                         
                         cmd = '{exe} -i "{infile}" {args} "{outfile}"'.format(
                             exe=FROG_FFMPEG,
                             infile=infile,
-                            args=FROG_SCRUB_FFMPEG_ARGS if scrub else FROG_FFMPEG_ARGS,
+                            args=frogArgs,
                             outfile=outfile,
                         )
                         try:
@@ -113,6 +128,29 @@ class VideoThread(Thread):
 
                 time.sleep(TIMEOUT)
 
+def dictFromStream(line,avType):
+    dic = {}
+    parts = line.split(',')
+    dic['index'] = ":".join(parts[0].split('#')[-1].split(':')[:2])
+    dic['type'] = parts[0].split('#')[-1].split(':')[2].strip()
+    dic['codec'] = parts[0].split('#')[-1].split(':')[3].strip()
+    if avType == 'Video':
+        if len(parts[3].split('x'))>1:
+            dic['pixel_format'] = ','.join([parts[1],parts[2]]).strip()
+            info = parts[3].split(' ')[1].split('x')
+            dic['width'] = info[0]
+            dic['height'] = info[1]
+        else:
+            dic['pixel_format'] = parts[1].strip()
+            info = parts[2].split(' ')[1].split('x')
+            dic['width'] = info[0]
+            dic['height'] = info[1]
+    else:
+        dic['hertz'] = parts[1].strip().split(" ")[0].strip()
+        dic['bitrate'] = parts[4].strip().split(" ")[0].strip()
+        
+    return dic    
+            
 
 def parseInfo(strings):
     data = {}
@@ -128,11 +166,15 @@ def parseInfo(strings):
         elif n.startswith('Stream'):
             if n.find('Video') != -1:
                 data.setdefault('video', [])
-                r = stream_video.search(n)
-                data['video'].append(r.groupdict())
+                n = n.replace('(eng)','')
+                data['video'].append(dictFromStream(n,'Video'))
+                #r = stream_video.search(n)
+                #data['video'].append(r.groupdict())
             elif n.find('Audio') != -1:
                 data.setdefault('audio', [])
-                r = stream_audio.search(n)
-                data['audio'].append(r.groupdict())
+                n = n.replace(' (default)','')
+                data['audio'].append(dictFromStream(n,'Audio'))
+                #r = stream_audio.search(n)
+                #data['audio'].append(r.groupdict())
 
     return data

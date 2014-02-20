@@ -112,7 +112,8 @@ def getPutData(request):
     :type request: Request
     """
     dataDict = {}
-    data = getattr(request.raw_post_data, request.body)
+    #data = getattr(request.raw_post_data, request.body)
+    data = request.body # fix for django 1.6
     for n in urlparse.parse_qsl(data):
         dataDict[n[0]] = n[1]
 

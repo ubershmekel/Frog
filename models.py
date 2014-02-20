@@ -293,13 +293,15 @@ class Video(Piece):
 
         ## -- Save thumbnail and put into queue
         thumbnail = hashPath.parent / ("_%s.jpg" % hashVal)
-        cmd = '%s -i "%s" -ss 1 -vframes 1 "%s"' % (
+        # `-y` to overwrite without asking
+        cmd = '%s -i "%s" -ss 1 -vframes 1 -y "%s"' % (
             settings.FFMPEG,
             hashPath,
             thumbnail
         )
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-        proc.communicate()
+        #proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
+        #proc.communicate()
+        subprocess.check_call(cmd, shell=True)
 
         self.thumbnail = thumbnail.replace('\\', '/').replace(ROOT, '')
 
