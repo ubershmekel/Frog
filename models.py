@@ -24,6 +24,7 @@ import json
 import Queue
 import subprocess
 import re
+import os
 
 from django.db import models
 from django.contrib.auth.models import User
@@ -283,10 +284,12 @@ class Video(Piece):
         tags = tags or []
 
         ## -- Get info
-        cmd = '%s -i "%s"' % (settings.FFMPEG, hashPath)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True)
-        infoString = proc.stdout.readlines()
-        videodata = parseInfo(infoString)
+        # ffprobe is the same as ffmpeg without output but it doesn't print a warning about missing the output file.
+        # Note that FFMPEG prints nothing to stdout and all the info is on stderr
+        ffprobe = os.path.join(settings.FFMPEG_BIN_DIR, 'ffprobe')
+        cmd = '%s -i "%s"' % (ffprobe, hashPath)
+        infoString = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
+        videodata = parseInfo(infoString.splitlines())
         
         self.width = int(videodata['video'][0]['width'])
         self.height = int(videodata['video'][0]['height'])

@@ -44,6 +44,10 @@ Frog.Uploader = new Class({
             ]
         });
 
+        uploader.bind('Error', function(error){
+             alert(error);
+        });
+
         uploader.init();
 
         uploader.bind('FilesAdded', function(up, files) {
