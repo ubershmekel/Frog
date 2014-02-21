@@ -45,6 +45,9 @@ FROG_FFMPEG_ARGS = getattr(settings, 'FROG_FFMPEG_ARGS', '-vcodec libx264 -b:v 2
 FROG_SCRUB_FFMPEG_ARGS = getattr(settings, 'FROG_SCRUB_FFMPEG_ARGS', '-vcodec libx264 -b:v 2500k -x264opts keyint=1:min-keyint=8 -acodec libvo_aacenc -b:a 56k -ac 2 -y')
 FROG_FFMPEG_FORMAT_ARGS = getattr(settings, 'FROG_FFMPEG_FORMAT_ARGS', '-vcodec libx264 -b:v 2500k -maxrate 2500k -bufsize 2500k -pix_fmt yuv420p -acodec libvo_aacenc -b:a 128k -ac 2 -y')
 
+VIDEO_PROCESSING = 'frog/i/processing.mp4'
+VIDEO_QUEUED = 'frog/i/queued.mp4'
+
 class VideoThread(Thread):
     def __init__(self, queue, *args, **kwargs):
         super(VideoThread, self).__init__(*args, **kwargs)
@@ -60,7 +63,7 @@ class VideoThread(Thread):
                     item = self.queue.get()
                     ## -- Set the video to processing
                     logger.info('Processing video: %s' % item.guid)
-                    item.video = 'frog/i/processing.mp4'
+                    item.video = VIDEO_PROCESSING
                     item.save()
                     ## -- Set the status of the queue item
                     item.queue.setStatus(item.queue.PROCESSING)

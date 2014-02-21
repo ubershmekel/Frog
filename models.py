@@ -25,16 +25,19 @@ import Queue
 import subprocess
 import re
 import os
+import logging
 
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.exceptions import ImproperlyConfigured
 from django.conf import settings
 
-from videoThread import VideoThread, parseInfo
+import videoThread
 
 from path import path as Path
 from PIL import Image as pilImage
+
+logger = logging.getLogger('frog')
 
 FROG_IMAGE_SIZE_CAP = getattr(settings, 'FROG_IMAGE_SIZE_CAP', 5120)
 FROG_IMAGE_SMALL_SIZE = getattr(settings, 'FROG_IMAGE_SMALL_SIZE', 600)
@@ -45,10 +48,6 @@ try:
     FROG_SITE_URL = getattr(settings, 'FROG_SITE_URL')
 except AttributeError:
     raise ImproperlyConfigured, 'FROG_SITE_URL is required'
-
-gQueue = Queue.Queue()
-gVideoThread = VideoThread(gQueue)
-gVideoThread.start()
 
 DefaultPrefs = {
     'backgroundColor': '000000',
@@ -289,7 +288,7 @@ class Video(Piece):
         ffprobe = os.path.join(settings.FFMPEG_BIN_DIR, 'ffprobe')
         cmd = '%s -i "%s"' % (ffprobe, hashPath)
         infoString = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
-        videodata = parseInfo(infoString.splitlines())
+        videodata = videoThread.parseInfo(infoString.splitlines())
         
         self.width = int(videodata['video'][0]['width'])
         self.height = int(videodata['video'][0]['height'])
@@ -323,7 +322,7 @@ class Video(Piece):
             self.guid = self.getGuid().guid
 
         ## -- Set the temp video while processing
-        self.video = 'frog/i/queued.mp4'
+        self.video = videoThread.VIDEO_QUEUED
         queuedvideo = VideoQueue.objects.get_or_create(video=self)[0]
         queuedvideo.save()
 
@@ -448,3 +447,24 @@ class RSSStorage(models.Model):
     interval = models.CharField(max_length=6)
     data = models.TextField()
     gallery = models.ForeignKey(Gallery, related_name='rss_storage')
+
+
+def startVideoThread():
+    global gQueue
+    global gVideoThread
+
+    gQueue = Queue.Queue()
+    gVideoThread = videoThread.VideoThread(gQueue)
+    gVideoThread.start()
+
+    processing = list(Video.objects.filter(video=videoThread.VIDEO_PROCESSING))
+    queued = list(Video.objects.filter(video=videoThread.VIDEO_QUEUED))
+    vids_to_process = processing + queued
+    logger.info('Adding %d videos to video thread queue' % len(vids_to_process))
+
+    for vid in vids_to_process:
+        gQueue.put(vid)
+
+
+startVideoThread()
+
